@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base target="_top">
+    <!-- Tailwind & FontAwesome -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <!-- LeafletJS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- เรียกใช้ไฟล์ Stylesheet -->
+    <?!= include('Sylesheet'); ?>
+
+    <style>
+        .hide-labels .custom-label {
+            display: none !important;
+        }
+
+        .custom-label {
+            background-color: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(30, 64, 175, 0.22);
+            border-radius: 5px;
+            font-family: 'Kanit', sans-serif;
+            font-size: 10px;
+            font-weight: 500;
+            color: #1f2937;
+            padding: 1px 5px;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.16);
+            white-space: nowrap;
+        }
+
+        .district-marker {
+            width: 24px;
+            height: 24px;
+            border-radius: 999px;
+            border: 3px solid #ffffff;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.26);
+            position: relative;
+        }
+
+        .district-marker::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: -8px;
+            width: 10px;
+            height: 10px;
+            border-radius: 0 0 3px 0;
+            background: inherit;
+            transform: translateX(-50%) rotate(45deg);
+            border-right: 3px solid #ffffff;
+            border-bottom: 3px solid #ffffff;
+        }
+
+        .map-filter-panel {
+            font-family: 'Kanit', sans-serif;
+            backdrop-filter: blur(10px);
+        }
+
+        .cursor-pinning {
+            cursor: url('https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png') 12 41, crosshair !important;
+        }
+
+        /* อนิเมชันปุ่มตอนซ่อนฟอร์ม */
+        @keyframes bounce-short {
+
+            0%,
+            100% {
+                transform: translate(-50%, 0);
+            }
+
+            50% {
+                transform: translate(-50%, -10px);
+            }
+        }
+
+        .animate-bounce-short {
+            animation: bounce-short 1.5s ease-in-out infinite;
+        }
+
+        /* ปรับแต่ง Scrollbar สำหรับฟอร์มบนมือถือให้ดูสวยงาม */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 overflow-hidden transition-colors duration-300">
+
+    <!-- ================= Navbar ================= -->
+    <nav class="bg-white shadow-md h-16 flex items-center px-4 sm:px-8 fixed w-full top-0 z-50 justify-between">
+        <div class="flex items-center gap-3 sm:gap-8 shrink-0">
+            <button onclick="toggleMobileMenu()"
+                class="md:hidden text-gray-600 hover:text-blue-600 focus:outline-none text-2xl p-1 transition-colors">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="flex items-center text-blue-600">
+                <i class="fa-solid fa-map-location-dot text-2xl sm:mr-3 mr-2"></i>
+                <span class="text-lg sm:text-xl font-bold tracking-tight">แผนที่ รพ.สต.สังกัด อบจ.ลำพูน</span>
+            </div>
+
+            <div id="navMenu"
+                class="absolute top-16 left-0 w-full bg-white shadow-lg md:shadow-none md:static md:w-auto md:bg-transparent flex-col md:flex-row items-start md:items-center px-6 py-4 md:p-0 gap-4 md:gap-6 hidden md:flex text-sm border-t border-gray-100 md:border-none z-40 transition-all">
+                <a href="javascript:void(0);" onclick="switchView('map'); toggleMobileMenu(true);" id="navMap"
+                    class="flex items-center w-full md:w-auto text-blue-600 font-bold transition-all hover:text-blue-700 py-2 md:py-0">
+                    <i class="fa-solid fa-house w-5 text-center mr-1"></i> หน้าแรก
+                </a>
+                <a href="javascript:void(0);" onclick="switchView('data'); toggleMobileMenu(true);" id="navData"
+                    class="flex items-center w-full md:w-auto text-gray-500 font-medium hover:text-blue-600 transition-all py-2 md:py-0">
+                    <i class="fa-solid fa-database w-5 text-center mr-1"></i> ข้อมูลแผนที่
+                </a>
+                <a href="javascript:void(0);" onclick="switchView('staff'); toggleMobileMenu(true);" id="navStaff"
+                    class="hidden items-center w-full md:w-auto text-gray-500 font-medium hover:text-blue-600 transition-all py-2 md:py-0">
+                    <i class="fa-solid fa-users w-5 text-center mr-1"></i> ข้อมูลผู้ดูแล
+                </a>
+            </div>
+        </div>
+        <div id="authSection" class="text-sm font-medium shrink-0 flex items-center"></div>
+    </nav>
+
+    <!-- ================= ส่วนที่ 1: Map View ================= -->
+    <div id="mapViewSection" class="w-full h-full relative">
+        <div id="map" class="mt-16 w-full h-[calc(100vh-64px)] z-0"></div>
+
+        <div id="mapFilterPanel"
+            class="map-filter-panel fixed top-[76px] left-3 right-3 sm:left-5 sm:right-auto z-[900] bg-white/95 border border-gray-200 shadow-xl rounded-xl p-3 sm:w-[320px]">
+            <div class="flex items-center justify-between gap-2 mb-2">
+                <div class="font-bold text-gray-800 text-sm flex items-center">
+                    <i class="fa-solid fa-filter text-blue-600 mr-2"></i> ตัวกรองแผนที่
+                </div>
+                <button onclick="resetMapFilters()"
+                    class="text-[11px] px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">ล้าง</button>
+            </div>
+            <div class="grid grid-cols-1 gap-2">
+                <label class="text-[11px] text-gray-500 font-medium">
+                    อำเภอ
+                    <select id="districtFilter" onchange="applyMapFilters()"
+                        class="mt-1 w-full bg-white border border-gray-300 rounded-lg p-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                        <option value="all">ทุกอำเภอ</option>
+                    </select>
+                </label>
+            </div>
+            <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500">
+                <span id="mapFilterSummary">กำลังโหลดข้อมูล...</span>
+                <button onclick="fitFilteredMarkers()"
+                    class="font-bold text-blue-600 hover:text-blue-800 transition-colors">ซูมไปยังพื้นที่</button>
+            </div>
+        </div>
+
+        <!-- แถบเครื่องมือตอนซ่อนฟอร์ม (ย้ายหมุดได้อย่างอิสระ) -->
+        <div id="minimizedBar"
+            class="hidden fixed bottom-8 left-1/2 transform -translate-x-1/2 z-[1000] bg-white px-5 py-3 rounded-full shadow-2xl border-2 border-blue-400 flex items-center gap-4 w-max animate-bounce-short">
+            <span class="text-sm font-bold text-blue-700 flex items-center"><i
+                    class="fa-solid fa-hand-pointer mr-2 text-blue-500"></i> ลากหมุดเพื่อเปลี่ยนตำแหน่ง</span>
+            <button onclick="maximizeForm()"
+                class="bg-blue-600 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow hover:bg-blue-700 active:scale-95 transition-all">เสร็จสิ้น</button>
+        </div>
+
+        <!-- ฟอร์มหลัก -->
+        <div id="formModal"
+            class="hidden fixed top-[80px] sm:top-[90px] left-4 sm:left-16 z-[1000] w-[calc(100%-2rem)] sm:w-[320px] transition-all">
+            <!-- เพิ่ม max-h-[calc(100vh-100px)] และ overflow-y-auto เพื่อให้ฟอร์มเลื่อนขึ้นลงได้เมื่อล้นจอ -->
+            <div
+                class="bg-white p-5 rounded-2xl shadow-2xl border border-gray-200 max-h-[calc(100vh-100px)] overflow-y-auto custom-scrollbar">
+                <div class="flex items-center mb-3">
+                    <div class="bg-blue-100 p-2 rounded-full mr-2"><i
+                            class="fa-solid fa-location-dot text-blue-600 text-sm"></i></div>
+                    <h2 id="formTitle" class="text-lg font-bold text-gray-800">ปักหมุดจุดใหม่</h2>
+                </div>
+
+                <div>
+                    <label class="text-xs font-medium text-gray-600 ml-1">ชื่อสถานที่ <span
+                            class="text-red-500">*</span></label>
+                    <input type="text" id="name"
+                        class="w-full mb-2 p-1.5 text-sm bg-gray-50 border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg outline-none transition-all"
+                        placeholder="เช่น ร้านกาแฟ">
+
+                    <div class="flex gap-2 mb-1">
+                        <div class="w-1/2">
+                            <label class="text-[10px] font-medium text-gray-500 ml-1">Latitude</label>
+                            <input type="number" step="any" id="lat"
+                                class="w-full p-1.5 bg-white border border-blue-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg text-xs text-blue-700 font-bold outline-none transition-all">
+                        </div>
+                        <div class="w-1/2">
+                            <label class="text-[10px] font-medium text-gray-500 ml-1">Longitude</label>
+                            <input type="number" step="any" id="lng"
+                                class="w-full p-1.5 bg-white border border-blue-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg text-xs text-blue-700 font-bold outline-none transition-all">
+                        </div>
+                    </div>
+
+                    <!-- ปุ่มย่อฟอร์มสำหรับเลื่อนหมุด -->
+                    <button type="button" onclick="minimizeForm()"
+                        class="mb-3 w-full flex justify-center items-center gap-1.5 text-[11px] bg-blue-50 hover:bg-blue-100 text-blue-600 py-1.5 rounded-lg border border-blue-200 transition-all font-bold shadow-sm">
+                        <i class="fa-solid fa-arrows-up-down-left-right"></i> ซ่อนฟอร์มชั่วคราวเพื่อเลื่อนหมุดบนแผนที่
+                    </button>
+
+                    <label class="text-xs font-medium text-gray-600 ml-1">รายละเอียด</label>
+                    <textarea id="detail"
+                        class="w-full mb-2 p-1.5 text-sm bg-gray-50 border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg h-12 outline-none transition-all"
+                        placeholder="รายละเอียดเบื้องต้น..."></textarea>
+
+                    <label class="text-xs font-medium text-gray-600 ml-1">ที่อยู่</label>
+                    <input type="text" id="address"
+                        class="w-full mb-2 p-1.5 text-sm bg-gray-50 border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg outline-none transition-all"
+                        placeholder="ตำบล, อำเภอ, จังหวัด">
+
+                    <label class="text-xs font-medium text-gray-600 ml-1">เบอร์โทรศัพท์</label>
+                    <input type="text" id="tel"
+                        class="w-full mb-4 p-1.5 text-sm bg-gray-50 border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg outline-none transition-all"
+                        placeholder="08x-xxx-xxxx">
+                </div>
+
+                <div class="flex justify-between items-center mt-2">
+                    <button id="deleteBtn" onclick="deletePin()"
+                        class="hidden px-3 py-2 text-red-500 hover:bg-red-50 text-xs font-bold rounded-lg transition-all"><i
+                            class="fa-solid fa-trash mr-1"></i> ลบ</button>
+                    <div class="flex gap-2 ml-auto">
+                        <button onclick="cancelProcess()"
+                            class="px-4 py-2 text-gray-500 text-xs font-medium hover:bg-gray-100 rounded-lg transition-all">ยกเลิก</button>
+                        <button id="saveBtn" onclick="saveData()"
+                            class="px-5 py-2 bg-blue-600 text-xs text-white font-bold rounded-lg shadow-md shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all">บันทึกหมุด</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ส่วนที่ 2: Data View ================= -->
+    <?!= include('MapData'); ?>
+
+    <!-- ================= ส่วนที่ 3: Staff View ================= -->
+    <?!= include('Staff'); ?>
+
+    <script>
+        let currentUser = sessionStorage.getItem('adminName');
+        let currentLevel = sessionStorage.getItem('adminLevel');
+
+        function minimizeForm() {
+            document.getElementById('formModal').classList.add('hidden');
+            document.getElementById('minimizedBar').classList.remove('hidden');
+        }
+
+        function maximizeForm() {
+            document.getElementById('minimizedBar').classList.add('hidden');
+            document.getElementById('formModal').classList.remove('hidden');
+        }
+
+        function toggleMobileMenu(forceClose = false) {
+            const menu = document.getElementById('navMenu');
+            if (forceClose) {
+                menu.classList.add('hidden');
+                menu.classList.remove('flex');
+            } else {
+                if (menu.classList.contains('hidden')) {
+                    menu.classList.remove('hidden');
+                    menu.classList.add('flex');
+                } else {
+                    menu.classList.add('hidden');
+                    menu.classList.remove('flex');
+                }
+            }
+        }
+
+        function switchView(view) {
+            const mapView = document.getElementById('mapViewSection');
+            const dataView = document.getElementById('mapDataSection');
+            const staffView = document.getElementById('staffViewSection');
+
+            const navMap = document.getElementById('navMap');
+            const navData = document.getElementById('navData');
+            const navStaff = document.getElementById('navStaff');
+
+            [navMap, navData, navStaff].forEach(nav => {
+                nav.classList.replace('text-blue-600', 'text-gray-500');
+                nav.classList.remove('font-bold');
+            });
+
+            if (view === 'map') {
+                mapView.classList.remove('hidden'); dataView.classList.add('hidden'); staffView.classList.add('hidden');
+                navMap.classList.replace('text-gray-500', 'text-blue-600'); navMap.classList.add('font-bold');
+                document.body.classList.add('overflow-hidden');
+                document.body.classList.replace('bg-gray-100', 'bg-gray-50');
+                map.invalidateSize();
+            } else if (view === 'data') {
+                mapView.classList.add('hidden'); dataView.classList.remove('hidden'); staffView.classList.add('hidden');
+                navData.classList.replace('text-gray-500', 'text-blue-600'); navData.classList.add('font-bold');
+                document.body.classList.remove('overflow-hidden');
+                document.body.classList.replace('bg-gray-50', 'bg-gray-100');
+                if (typeof renderTable === 'function') renderTable();
+            } else if (view === 'staff') {
+                mapView.classList.add('hidden'); dataView.classList.add('hidden'); staffView.classList.remove('hidden');
+                navStaff.classList.replace('text-gray-500', 'text-blue-600'); navStaff.classList.add('font-bold');
+                document.body.classList.remove('overflow-hidden');
+                document.body.classList.replace('bg-gray-50', 'bg-gray-100');
+                if (typeof loadStaffData === 'function') loadStaffData();
+            }
+        }
+
+        let isPinningMode = false;
+        let tempMarker = null;
+        let editingRowIndex = null;
+        window.mapData = [];
+        window.mapMarkers = [];
+
+        updateAuthUI();
+
+        function updateAuthUI() {
+            const authSection = document.getElementById('authSection');
+            const navStaff = document.getElementById('navStaff');
+
+            if (currentUser) {
+                navStaff.classList.remove('hidden');
+                navStaff.classList.add('flex');
+
+                const badge = currentLevel === 'superadmin'
+                    ? `<span class="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded border border-purple-200 ml-1">Super</span>`
+                    : `<span class="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded border border-green-200 ml-1">Staff</span>`;
+
+                authSection.innerHTML = `
+          <div class="flex items-center gap-2 sm:gap-4">
+            <button id="pinModeBtn" onclick="togglePinMode()" class="bg-blue-600 text-white px-3 py-2 sm:px-4 sm:py-2 rounded-lg shadow-md hover:bg-blue-700 transition-all font-medium flex items-center justify-center">
+              <i class="fa-solid fa-location-dot"></i><span class="hidden sm:inline ml-2">เพิ่มหมุด</span>
+            </button>
+            <div class="border-l border-gray-300 h-6 sm:h-8 hidden sm:block"></div>
+            
+            <span class="text-gray-700 font-medium hidden md:flex items-center">
+              <i class="fa-solid fa-user-shield mr-1"></i> <span class="hidden lg:inline">${currentUser}</span> ${badge}
+            </span>
+            
+            <button onclick="logout()" class="text-red-500 hover:bg-red-50 px-2 py-2 sm:px-3 sm:py-2 rounded-lg transition-all flex items-center justify-center" title="ออกจากระบบ">
+              <i class="fa-solid fa-right-from-bracket"></i><span class="hidden sm:inline ml-1">ออก</span>
+            </button>
+          </div>
+        `;
+            } else {
+                isPinningMode = false;
+                navStaff.classList.add('hidden');
+                navStaff.classList.remove('flex');
+
+                if (tempMarker) map.removeLayer(tempMarker);
+
+                authSection.innerHTML = `
+          <button onclick="showLogin()" class="bg-blue-600 text-white px-3 py-2 sm:px-4 sm:py-2 rounded-lg shadow hover:bg-blue-700 transition-all flex items-center justify-center">
+            <i class="fa-solid fa-right-to-bracket"></i> <span class="hidden sm:inline ml-1">เข้าสู่ระบบ</span>
+          </button>
+        `;
+            }
+
+            if (typeof renderTable === 'function' && !document.getElementById('mapDataSection').classList.contains('hidden')) renderTable();
+            if (typeof renderStaffTable === 'function' && !document.getElementById('staffViewSection').classList.contains('hidden')) renderStaffTable();
+        }
+
+        function togglePinMode() {
+            switchView('map');
+            isPinningMode = !isPinningMode;
+            const btn = document.getElementById('pinModeBtn');
+            const mapContainer = document.getElementById('map');
+
+            if (isPinningMode) {
+                btn.innerHTML = '<i class="fa-solid fa-xmark"></i><span class="hidden sm:inline ml-2">ยกเลิกเพิ่มหมุด</span>';
+                btn.classList.replace('bg-blue-600', 'bg-red-500');
+                btn.classList.replace('hover:bg-blue-700', 'hover:bg-red-600');
+                mapContainer.classList.add('cursor-pinning');
+                Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'คลิกบนแผนที่เพื่อวางหมุด', showConfirmButton: false, timer: 2000 });
+            } else {
+                cancelProcess();
+            }
+        }
+
+        function cancelProcess() {
+            const wasEditing = (editingRowIndex !== null);
+            isPinningMode = false;
+            editingRowIndex = null;
+
+            const btn = document.getElementById('pinModeBtn');
+            const mapContainer = document.getElementById('map');
+
+            if (btn) {
+                btn.innerHTML = '<i class="fa-solid fa-location-dot"></i><span class="hidden sm:inline ml-2">เพิ่มหมุด</span>';
+                btn.classList.replace('bg-red-500', 'bg-blue-600');
+                btn.classList.replace('hover:bg-red-600', 'hover:bg-blue-700');
+            }
+            mapContainer.classList.remove('cursor-pinning');
+
+            if (tempMarker) {
+                map.removeLayer(tempMarker);
+                tempMarker = null;
+            }
+
+            document.getElementById('formTitle').innerHTML = 'ปักหมุดจุดใหม่';
+            document.getElementById('saveBtn').innerHTML = 'บันทึกหมุด';
+            document.getElementById('deleteBtn').classList.add('hidden');
+
+            document.getElementById('formModal').classList.add('hidden');
+            document.getElementById('minimizedBar').classList.add('hidden');
+            document.querySelectorAll('#formModal input, #formModal textarea').forEach(i => i.value = '');
+
+            if (wasEditing) showMapMarkers(window.mapData);
+        }
+
+        function showLogin() {
+            Swal.fire({
+                title: 'เข้าสู่ระบบผู้ดูแล',
+                html: `
+          <input type="text" id="loginUser" class="swal2-input !w-[80%] !text-sm" placeholder="Username">
+          <input type="password" id="loginPass" class="swal2-input !w-[80%] !text-sm" placeholder="Password">
+        `,
+                confirmButtonText: '<i class="fa-solid fa-right-to-bracket mr-2"></i>เข้าสู่ระบบ', confirmButtonColor: '#2563eb', showCancelButton: true, cancelButtonText: '<i class="fa-solid fa-xmark mr-2"></i>ยกเลิก',
+                didOpen: () => {
+                    const handleEnter = (e) => { if (e.key === 'Enter') Swal.clickConfirm(); };
+                    document.getElementById('loginUser').addEventListener('keypress', handleEnter);
+                    document.getElementById('loginPass').addEventListener('keypress', handleEnter);
+                },
+                preConfirm: () => {
+                    const user = document.getElementById('loginUser').value;
+                    const pass = document.getElementById('loginPass').value;
+                    if (!user || !pass) Swal.showValidationMessage(`กรุณากรอกข้อมูลให้ครบถ้วน`);
+                    return { user: user, pass: pass };
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({ title: 'กำลังตรวจสอบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    google.script.run.withSuccessHandler(res => {
+                        if (res.success) {
+                            sessionStorage.setItem('adminName', res.name);
+                            sessionStorage.setItem('adminLevel', res.level);
+                            currentUser = res.name;
+                            currentLevel = res.level;
+
+                            updateAuthUI();
+                            loadMapData();
+                            Swal.fire({ icon: 'success', title: 'สำเร็จ', text: `ยินดีต้อนรับคุณ ${res.name}`, timer: 1500, showConfirmButton: false });
+                        } else {
+                            Swal.fire({ icon: 'error', title: 'เข้าสู่ระบบล้มเหลว', text: res.message });
+                        }
+                    }).checkLogin(result.value.user, result.value.pass);
+                }
+            });
+        }
+
+        function logout() {
+            sessionStorage.removeItem('adminName');
+            sessionStorage.removeItem('adminLevel');
+            currentUser = null;
+            currentLevel = null;
+
+            switchView('map');
+            updateAuthUI();
+            loadMapData();
+            Swal.fire({ icon: 'info', title: 'ออกจากระบบแล้ว', timer: 1000, showConfirmButton: false });
+        }
+
+        const normalMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+        const satelliteMap = L.tileLayer('https://mt1.google.com/vt/lyrs=y&hl=th&x={x}&y={y}&z={z}');
+        const map = L.map('map', { center: [18.57, 99.02], zoom: 10, layers: [normalMap], zoomControl: false });
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        const labelLayer = L.layerGroup();
+
+        const baseMaps = { "แผนที่ปกติ": normalMap, "ดาวเทียม": satelliteMap };
+        const overlayMaps = { "ชื่อ รพ.สต.": labelLayer };
+
+        L.control.layers(baseMaps, overlayMaps, { collapsed: false }).addTo(map);
+        labelLayer.addTo(map);
+        map.on('overlayadd', function (e) { if (e.name === 'ชื่อ รพ.สต.') document.getElementById('map').classList.remove('hide-labels'); });
+        map.on('overlayremove', function (e) { if (e.name === 'ชื่อ รพ.สต.') document.getElementById('map').classList.add('hide-labels'); });
+
+        const redIcon = new L.Icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        });
+
+        const markersLayer = L.layerGroup().addTo(map);
+        const districtBoundaryLayer = L.layerGroup().addTo(map);
+        const boundaryCache = {};
+        const boundaryPending = {};
+        const boundaryLayerRefs = { province: null, district: null };
+        let currentFilteredRows = [];
+
+        const DISTRICT_STYLES = {
+            'เมืองลำพูน': { color: '#2563eb', fill: '#dbeafe' },
+            'แม่ทา': { color: '#16a34a', fill: '#dcfce7' },
+            'บ้านโฮ่ง': { color: '#ea580c', fill: '#ffedd5' },
+            'ลี้': { color: '#7c3aed', fill: '#ede9fe' },
+            'ทุ่งหัวช้าง': { color: '#0891b2', fill: '#cffafe' },
+            'ป่าซาง': { color: '#db2777', fill: '#fce7f3' },
+            'บ้านธิ': { color: '#ca8a04', fill: '#fef9c3' },
+            'เวียงหนองล่อง': { color: '#4f46e5', fill: '#e0e7ff' },
+            'ไม่ระบุอำเภอ': { color: '#64748b', fill: '#f1f5f9' }
+        };
+
+        function getDistrictFromRow(row) {
+            const text = `${row[1] || ''} ${row[4] || ''} ${row[5] || ''}`;
+            const districtNames = Object.keys(DISTRICT_STYLES).filter(name => name !== 'ไม่ระบุอำเภอ');
+            const matched = districtNames.find(name => text.includes(name) || text.includes(`อ.${name}`) || text.includes(`อำเภอ${name}`));
+            return matched || 'ไม่ระบุอำเภอ';
+        }
+
+        function getDistrictStyle(district) {
+            return DISTRICT_STYLES[district] || DISTRICT_STYLES['ไม่ระบุอำเภอ'];
+        }
+
+        function createDistrictIcon(district) {
+            const style = getDistrictStyle(district);
+            return L.divIcon({
+                className: '',
+                html: `<div class="district-marker" style="background:${style.color}"></div>`,
+                iconSize: [24, 32],
+                iconAnchor: [12, 30],
+                popupAnchor: [0, -30]
+            });
+        }
+
+        function buildBoundaryQuery(district = 'all') {
+            if (district === 'all') return 'จังหวัดลำพูน ประเทศไทย';
+            const districtName = district.startsWith('อำเภอ') ? district : `อำเภอ${district}`;
+            return `${districtName} จังหวัดลำพูน ประเทศไทย`;
+        }
+
+        function fetchBoundary(key, query) {
+            if (boundaryCache[key]) return Promise.resolve(boundaryCache[key]);
+            if (boundaryPending[key]) return boundaryPending[key];
+
+            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&polygon_geojson=1&format=json&limit=1`;
+            boundaryPending[key] = fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    const geojson = data && data.length > 0 ? data[0].geojson : null;
+                    if (geojson) boundaryCache[key] = geojson;
+                    return geojson;
+                })
+                .catch(err => {
+                    console.error('Boundary fetch failed:', err);
+                    return null;
+                })
+                .finally(() => {
+                    delete boundaryPending[key];
+                });
+
+            return boundaryPending[key];
+        }
+
+        function drawProvinceBoundary(geojson) {
+            if (!geojson) return null;
+            const layer = L.geoJSON(geojson, {
+                interactive: false,
+                style: {
+                    color: '#15803d',
+                    weight: 3,
+                    opacity: 0.85,
+                    fillColor: '#22c55e',
+                    fillOpacity: 0.035
+                }
+            }).addTo(districtBoundaryLayer);
+
+            boundaryLayerRefs.province = layer;
+            return layer;
+        }
+
+        function drawSelectedDistrictBoundary(geojson, district) {
+            if (!geojson || district === 'all' || district === 'ไม่ระบุอำเภอ') return null;
+            const style = getDistrictStyle(district);
+            const layer = L.geoJSON(geojson, {
+                interactive: false,
+                style: {
+                    color: style.color,
+                    weight: 4,
+                    opacity: 0.95,
+                    fillColor: style.color,
+                    fillOpacity: 0.08
+                }
+            }).bindTooltip(`อำเภอ${district}`, {
+                permanent: true,
+                direction: 'center',
+                className: 'custom-label'
+            }).addTo(districtBoundaryLayer);
+
+            boundaryLayerRefs.district = layer;
+            return layer;
+        }
+
+        async function refreshBoundaryLayer() {
+            const selectedDistrict = getSelectedDistrict();
+            districtBoundaryLayer.clearLayers();
+            boundaryLayerRefs.province = null;
+            boundaryLayerRefs.district = null;
+
+            const provinceGeojson = await fetchBoundary('province', buildBoundaryQuery('all'));
+            if (selectedDistrict !== getSelectedDistrict()) return;
+            drawProvinceBoundary(provinceGeojson);
+
+            if (selectedDistrict !== 'all' && selectedDistrict !== 'ไม่ระบุอำเภอ') {
+                const districtGeojson = await fetchBoundary(`district:${selectedDistrict}`, buildBoundaryQuery(selectedDistrict));
+                if (selectedDistrict !== getSelectedDistrict()) return;
+                drawSelectedDistrictBoundary(districtGeojson, selectedDistrict);
+            }
+        }
+
+        function getSelectedDistrict() {
+            const el = document.getElementById('districtFilter');
+            return el ? el.value : 'all';
+        }
+
+        function getFilteredMapRows(data = window.mapData) {
+            const district = getSelectedDistrict();
+            return (data || []).filter(row => {
+                const rowDistrict = getDistrictFromRow(row);
+                return district === 'all' || rowDistrict === district;
+            });
+        }
+
+        function updateDistrictFilterOptions(data) {
+            const select = document.getElementById('districtFilter');
+            if (!select) return;
+            const selected = select.value || 'all';
+            const availableDistricts = [...new Set((data || []).map(getDistrictFromRow))];
+            const orderedDistricts = Object.keys(DISTRICT_STYLES).filter(district => district !== 'ไม่ระบุอำเภอ');
+            if (availableDistricts.includes('ไม่ระบุอำเภอ')) orderedDistricts.push('ไม่ระบุอำเภอ');
+
+            select.innerHTML = '<option value="all">ทุกอำเภอ</option>' + orderedDistricts.map(district => {
+                const count = (data || []).filter(row => getDistrictFromRow(row) === district).length;
+                return `<option value="${district}">${district} (${count})</option>`;
+            }).join('');
+
+            select.value = [...select.options].some(option => option.value === selected) ? selected : 'all';
+        }
+
+        function updateFilterSummary(total, filtered) {
+            const summary = document.getElementById('mapFilterSummary');
+            if (!summary) return;
+            summary.innerText = `แสดง ${filtered} จาก ${total} จุด`;
+        }
+
+        function applyMapFilters() {
+            showMapMarkers(window.mapData || [], { keepFilters: true });
+        }
+
+        function resetMapFilters() {
+            document.getElementById('districtFilter').value = 'all';
+            applyMapFilters();
+            map.flyTo([18.57, 99.02], 10, { animate: true, duration: 0.8 });
+        }
+
+        function fitFilteredMarkers() {
+            const validPoints = currentFilteredRows
+                .map(row => [parseFloat(row[2]), parseFloat(row[3])])
+                .filter(point => !isNaN(point[0]) && !isNaN(point[1]));
+
+            if (validPoints.length > 0) {
+                map.fitBounds(L.latLngBounds(validPoints), { padding: [60, 60], maxZoom: 14 });
+                return;
+            }
+
+            const district = getSelectedDistrict();
+            const hasDistrictBoundary = district !== 'all' && district !== 'ไม่ระบุอำเภอ';
+            const boundaryLayer = hasDistrictBoundary ? boundaryLayerRefs.district : boundaryLayerRefs.province;
+            if (boundaryLayer) {
+                map.fitBounds(boundaryLayer.getBounds(), { padding: [40, 40] });
+                return;
+            }
+
+            refreshBoundaryLayer().then(() => {
+                const refreshedLayer = hasDistrictBoundary ? boundaryLayerRefs.district : boundaryLayerRefs.province;
+                if (refreshedLayer) map.fitBounds(refreshedLayer.getBounds(), { padding: [40, 40] });
+                else map.flyTo([18.57, 99.02], 10, { animate: true, duration: 0.8 });
+            });
+        }
+
+        function loadMapData() {
+            google.script.run.withSuccessHandler(showMapMarkers).getMapData();
+        }
+        loadMapData();
+
+        refreshBoundaryLayer();
+
+        function showMapMarkers(data, options = {}) {
+            window.mapData = data;
+            window.mapMarkers = [];
+            markersLayer.clearLayers();
+            labelLayer.clearLayers();
+
+            if (!options.keepFilters) updateDistrictFilterOptions(data);
+            refreshBoundaryLayer();
+            const filteredRows = getFilteredMapRows(data);
+            currentFilteredRows = filteredRows;
+            updateFilterSummary(data.length, filteredRows.length);
+
+            data.forEach((row, index) => {
+                if (!filteredRows.includes(row)) {
+                    window.mapMarkers.push(null);
+                    return;
+                }
+
+                const lat = parseFloat(row[2]);
+                const lng = parseFloat(row[3]);
+                const district = getDistrictFromRow(row);
+                const districtStyle = getDistrictStyle(district);
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    const content = `
+            <div class="p-1 min-w-[240px] max-w-[300px]" style="font-family: 'Kanit', sans-serif;">
+              <h3 class="font-bold text-blue-600 text-lg mb-1 leading-tight">${row[1]}</h3>
+              <div class="flex flex-wrap gap-1 mb-2">
+                <span class="text-[10px] px-2 py-0.5 rounded-full text-white" style="background:${districtStyle.color}">อ.${district}</span>
+              </div>
+              <div class="mb-2 border-b pb-2">
+                <div class="inline-flex items-center px-2 py-0.5 mb-1 rounded-md border border-green-200 bg-green-50 text-green-700 text-[11px] font-bold">
+                  <i class="fa-solid fa-hand-holding-medical mr-1"></i> การให้บริการ
+                </div>
+                <p class="text-sm text-gray-600 break-words">${row[4] || '-'}</p>
+              </div>
+              <div class="text-sm space-y-2 text-gray-700 mt-3">
+                <div class="flex items-start"><i class="fa-solid fa-map-pin mt-1 w-6 text-center mr-1 text-red-500"></i> <span class="leading-tight">${row[5] || 'ไม่มีข้อมูลที่อยู่'}</span></div>
+                <div><a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" class="flex items-center text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg transition-all w-full border border-blue-100 shadow-sm"><i class="fa-solid fa-location-arrow w-5 text-center mr-2"></i><div><div class="font-bold">นำทางไปที่นี่</div><div class="text-[10px] text-gray-500">พิกัด: ${lat.toFixed(5)}, ${lng.toFixed(5)}</div></div></a></div>
+                <div>${row[6] ? `<a href="tel:${row[6]}" class="flex items-center text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 px-3 py-2 rounded-lg transition-all w-full border border-green-100 shadow-sm"><i class="fa-solid fa-phone-volume w-5 text-center mr-2"></i><div class="font-bold">โทร: ${row[6]}</div></a>` : `<div class="flex items-center text-gray-400 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100 italic"><i class="fa-solid fa-phone w-5 text-center mr-2"></i> ไม่มีเบอร์ติดต่อ</div>`}</div>
+              </div>
+              ${currentUser ? `<div class="mt-3 pt-3 border-t border-gray-100"><button onclick="editPin(${index})" class="w-full bg-amber-500 hover:bg-amber-600 text-white py-1.5 rounded-lg text-sm font-bold shadow-sm transition-all flex justify-center items-center"><i class="fa-solid fa-pen-to-square mr-2"></i> แก้ไขข้อมูล</button></div>` : ''}
+            </div>
+          `;
+
+                    const marker = L.marker([lat, lng], { icon: createDistrictIcon(district) }).bindPopup(content);
+                    marker.on('popupopen', function (e) {
+                        setTimeout(() => {
+                            e.popup.update();
+                            const px = map.project(e.target._popup._latlng);
+                            px.y -= e.target._popup._container.clientHeight / 2;
+                            map.panTo(map.unproject(px), { animate: true });
+                        }, 100);
+                    });
+
+                    marker.bindTooltip(row[1], { permanent: true, direction: 'bottom', offset: [0, 5], className: 'custom-label' });
+                    markersLayer.addLayer(marker);
+                    window.mapMarkers.push(marker);
+                } else {
+                    window.mapMarkers.push(null);
+                }
+            });
+            if (typeof renderTable === 'function' && !document.getElementById('mapDataSection').classList.contains('hidden')) renderTable();
+        }
+
+        function editPin(index) {
+            showMapMarkers(window.mapData);
+            const row = window.mapData[index];
+            editingRowIndex = index + 2;
+
+            map.closePopup();
+            if (window.mapMarkers[index]) markersLayer.removeLayer(window.mapMarkers[index]);
+
+            isPinningMode = true;
+            document.getElementById('map').classList.remove('cursor-pinning');
+
+            const btn = document.getElementById('pinModeBtn');
+            if (btn) {
+                btn.innerHTML = '<i class="fa-solid fa-xmark"></i><span class="hidden sm:inline ml-2">ยกเลิกแก้ไข</span>';
+                btn.classList.replace('bg-blue-600', 'bg-red-500');
+                btn.classList.replace('hover:bg-blue-700', 'hover:bg-red-600');
+            }
+
+            document.getElementById('name').value = row[1] || '';
+            document.getElementById('lat').value = parseFloat(row[2]).toFixed(6);
+            document.getElementById('lng').value = parseFloat(row[3]).toFixed(6);
+            document.getElementById('detail').value = row[4] || '';
+            document.getElementById('address').value = row[5] || '';
+            document.getElementById('tel').value = row[6] || '';
+
+            document.getElementById('formTitle').innerHTML = 'แก้ไขข้อมูลสถานที่';
+            document.getElementById('saveBtn').innerHTML = 'บันทึกการแก้ไข';
+            document.getElementById('deleteBtn').classList.remove('hidden');
+
+            if (tempMarker) map.removeLayer(tempMarker);
+            tempMarker = L.marker([row[2], row[3]], { icon: redIcon, draggable: true }).addTo(map);
+
+            tempMarker.on('dragend', function (event) {
+                const marker = event.target;
+                const position = marker.getLatLng();
+                document.getElementById('lat').value = position.lat.toFixed(6);
+                document.getElementById('lng').value = position.lng.toFixed(6);
+            });
+
+            document.getElementById('formModal').classList.remove('hidden');
+            document.getElementById('minimizedBar').classList.add('hidden');
+            map.panTo([row[2], row[3]], { animate: true });
+        }
+
+        function deletePin() {
+            if (!editingRowIndex) return;
+
+            Swal.fire({
+                title: 'ยืนยันการลบหมุด?',
+                text: "คุณต้องการลบสถานที่นี้ใช่หรือไม่? ข้อมูลนี้จะไม่สามารถกู้คืนได้",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#9ca3af',
+                confirmButtonText: '<i class="fa-solid fa-trash mr-1"></i> ใช่, ลบเลย!',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({ title: 'กำลังลบข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    google.script.run.withSuccessHandler(() => {
+                        Swal.fire({ icon: 'success', title: 'ลบสำเร็จ!', text: 'ลบหมุดออกจากระบบแล้ว', timer: 1500, showConfirmButton: false }).then(() => {
+                            cancelProcess();
+                            loadMapData();
+                        });
+                    }).deleteLocationData(editingRowIndex);
+                }
+            });
+        }
+
+        function updateMarkerFromInput() {
+            if (!tempMarker) return;
+            const newLat = parseFloat(document.getElementById('lat').value);
+            const newLng = parseFloat(document.getElementById('lng').value);
+            if (!isNaN(newLat) && !isNaN(newLng)) {
+                const newPos = new L.LatLng(newLat, newLng);
+                tempMarker.setLatLng(newPos);
+                map.panTo(newPos, { animate: true });
+            }
+        }
+
+        document.getElementById('lat').addEventListener('input', updateMarkerFromInput);
+        document.getElementById('lng').addEventListener('input', updateMarkerFromInput);
+
+        map.on('click', function (e) {
+            if (!isPinningMode) return;
+
+            document.getElementById('map').classList.remove('cursor-pinning');
+            const lat = e.latlng.lat.toFixed(6);
+            const lng = e.latlng.lng.toFixed(6);
+
+            if (!tempMarker) {
+                tempMarker = L.marker([lat, lng], { icon: redIcon, draggable: true }).addTo(map);
+                tempMarker.on('dragend', function (event) {
+                    const marker = event.target;
+                    const position = marker.getLatLng();
+                    document.getElementById('lat').value = position.lat.toFixed(6);
+                    document.getElementById('lng').value = position.lng.toFixed(6);
+                });
+            } else {
+                tempMarker.setLatLng(e.latlng);
+            }
+
+            map.panTo(e.latlng, { animate: true });
+            document.getElementById('lat').value = lat;
+            document.getElementById('lng').value = lng;
+
+            maximizeForm();
+        });
+
+        function saveData() {
+            const data = {
+                name: document.getElementById('name').value,
+                lat: document.getElementById('lat').value,
+                lng: document.getElementById('lng').value,
+                detail: document.getElementById('detail').value,
+                address: document.getElementById('address').value,
+                tel: document.getElementById('tel').value,
+                create: currentUser
+            };
+
+            if (!data.name) {
+                Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ครบ', text: 'กรุณากรอกชื่อสถานที่', confirmButtonColor: '#2563eb' });
+                return;
+            }
+
+            Swal.fire({ title: 'กำลังบันทึกข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            if (editingRowIndex) {
+                google.script.run.withSuccessHandler(() => {
+                    Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: 'อัปเดตข้อมูลเรียบร้อยแล้ว', timer: 1500, showConfirmButton: false }).then(() => {
+                        const finalLat = parseFloat(data.lat);
+                        const finalLng = parseFloat(data.lng);
+                        cancelProcess();
+                        loadMapData();
+                        map.flyTo([finalLat, finalLng], 16, { animate: true, duration: 1.5 });
+                    });
+                }).updateLocationData(editingRowIndex, data);
+            } else {
+                google.script.run.withSuccessHandler(() => {
+                    Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: 'บันทึกจุดปักหมุดเรียบร้อยแล้ว', timer: 1500, showConfirmButton: false }).then(() => {
+                        const finalLat = parseFloat(data.lat);
+                        const finalLng = parseFloat(data.lng);
+                        cancelProcess();
+                        loadMapData();
+                        map.flyTo([finalLat, finalLng], 16, { animate: true, duration: 1.5 });
+                    });
+                }).saveLocationData(data);
+            }
+        }
+    </script>
+</body>
+
+</html>
