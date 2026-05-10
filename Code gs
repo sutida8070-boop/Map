@@ -1,0 +1,134 @@
+/**
+ * ระบบจัดการแผนที่และผู้ดูแลระบบ (Backend)
+ * พัฒนาโดย Gemini
+ */
+
+const SHEET_ID = '1IaCo2pIYcSkta_v9bl53XMY6lrCeZ86I2QN_nw62siA';
+const SHEET_NAME = 'map';
+const USER_SHEET_NAME = 'user'; 
+
+// --- ฟังก์ชันหลักในการแสดงผลหน้าเว็บ ---
+function doGet() {
+  return HtmlService.createTemplateFromFile('Index')
+    .evaluate()
+    .setTitle('ระบบจัดการแผนที่')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function include(filename) {
+  try {
+    return HtmlService.createHtmlOutputFromFile(filename).getContent();
+  } catch (e) {
+    return '<!-- Error including ' + filename + ' -->';
+  }
+}
+
+function getAppUrl() {
+  return ScriptApp.getService().getUrl();
+}
+
+// ==========================================
+// 1. ระบบจัดการข้อมูลหมุดแผนที่ (Sheet: map)
+// ==========================================
+
+function getMapData() {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const data = sheet.getDataRange().getDisplayValues();
+  if (data.length > 0) data.shift(); 
+  return data;
+}
+
+function saveLocationData(data) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const timestamp = new Date();
+  const formatTel = data.tel ? "'" + data.tel : "";
+  
+  sheet.appendRow([timestamp, data.name, data.lat, data.lng, data.detail, data.address, formatTel, data.create, ""]);
+  return 'success';
+}
+
+function updateLocationData(rowIndex, data) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const timestamp = new Date();
+  const formatTel = data.tel ? "'" + data.tel : "";
+
+  sheet.getRange(rowIndex, 2).setValue(data.name);
+  sheet.getRange(rowIndex, 3).setValue(data.lat);
+  sheet.getRange(rowIndex, 4).setValue(data.lng);
+  sheet.getRange(rowIndex, 5).setValue(data.detail);
+  sheet.getRange(rowIndex, 6).setValue(data.address);
+  sheet.getRange(rowIndex, 7).setValue(formatTel);
+  sheet.getRange(rowIndex, 9).setValue(timestamp); 
+
+  return 'success';
+}
+
+function deleteLocationData(rowIndex) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  sheet.deleteRow(rowIndex);
+  return 'success';
+}
+
+// ==========================================
+// 2. ระบบจัดการผู้ดูแลและ Login (Sheet: user)
+// ==========================================
+
+function checkLogin(username, password) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(USER_SHEET_NAME);
+  const data = sheet.getDataRange().getValues(); 
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][2] == username && data[i][3] == password) {
+      return { success: true, name: data[i][1], level: data[i][4] };
+    }
+  }
+  return { success: false, message: 'ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง' };
+}
+
+function getStaffData() {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(USER_SHEET_NAME);
+  const data = sheet.getDataRange().getDisplayValues();
+  if (data.length > 0) data.shift(); 
+  return data;
+}
+
+// ฟังก์ชันเพิ่มผู้ดูแล (ปรับปรุงการเรียง ID แบบ 10xx อัตโนมัติ)
+function saveStaffData(data) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(USER_SHEET_NAME);
+  const lastRow = sheet.getLastRow();
+  let newId = 1001; // ค่าเริ่มต้นถ้ายังไม่มีข้อมูลผู้ดูแลเลย (มีแค่หัวตาราง)
+
+  // เช็คว่ามีข้อมูลอยู่แล้วหรือไม่ (มีมากกว่าหัวตารางแถวที่ 1)
+  if (lastRow > 1) {
+    const lastIdStr = sheet.getRange(lastRow, 1).getValue(); // ดึงค่า ID จากคอลัมน์แรก (A) ของแถวสุดท้าย
+    const lastIdNum = parseInt(lastIdStr, 10);
+    
+    // ถ้า ID ล่าสุดเป็นตัวเลขที่ถูกต้อง (ไม่ใช่ค่าว่างหรือตัวหนังสือ) ให้บวก 1 เพิ่มเข้าไป
+    if (!isNaN(lastIdNum)) {
+      // ถ้า ID เดิมไม่ใช่รูปแบบ 10xx ก็ปรับให้เริ่มที่ 10xx แต่ถ้าใช่ก็บวก 1 ปกติ
+      newId = lastIdNum >= 1000 ? lastIdNum + 1 : 1001;
+    }
+  }
+
+  sheet.appendRow([newId, data.name, data.user, data.password, data.level]);
+  return 'success';
+}
+
+function updateStaffData(rowIndex, data) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(USER_SHEET_NAME);
+  sheet.getRange(rowIndex, 2).setValue(data.name);
+  sheet.getRange(rowIndex, 3).setValue(data.user);
+  
+  // อัปเดตรหัสผ่านเฉพาะเมื่อมีการพิมพ์ค่าใหม่มาเท่านั้น (เว้นว่างไว้คือใช้รหัสเดิม)
+  if (data.password && data.password.trim() !== '') {
+    sheet.getRange(rowIndex, 4).setValue(data.password);
+  }
+  sheet.getRange(rowIndex, 5).setValue(data.level);
+  return 'success';
+}
+
+function deleteStaffData(rowIndex) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(USER_SHEET_NAME);
+  sheet.deleteRow(rowIndex);
+  return 'success';
+}
